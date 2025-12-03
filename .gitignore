@@ -1,0 +1,58 @@
+# Azure Developer CLI
+.azure/
+
+# Build outputs
+bin/
+obj/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Go
+*.test
+*.out
+vendor/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+
+# Environment files (except examples)
+.env
+.env.local
+*.env
+!.env.example
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# Terraform (if someone converts)
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl

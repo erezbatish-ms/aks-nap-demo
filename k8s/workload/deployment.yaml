@@ -1,0 +1,83 @@
+# CPU Stress Workload Deployment
+# This deployment creates pods that consume CPU resources to trigger NAP scaling
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpu-stress
+  namespace: nap-demo
+  labels:
+    app: cpu-stress
+    app.kubernetes.io/name: cpu-stress
+    app.kubernetes.io/component: workload
+spec:
+  # Start with 1 replica - HPA will scale based on load
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cpu-stress
+  template:
+    metadata:
+      labels:
+        app: cpu-stress
+        app.kubernetes.io/name: cpu-stress
+    spec:
+      # REQUIRE scheduling on NAP-provisioned nodes only
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: karpenter.sh/nodepool
+                    operator: In
+                    values:
+                      - nap-demo-pool
+      
+      containers:
+        - name: stress
+          image: ${ACR_LOGIN_SERVER}/nap-demo/workload:latest
+          imagePullPolicy: Always
+          
+          # Resource requests trigger NAP to provision appropriately sized nodes
+          resources:
+            requests:
+              cpu: 500m      # Request 0.5 CPU cores
+              memory: 256Mi  # Request 256 MiB memory
+            limits:
+              cpu: 1000m     # Limit to 1 CPU core
+              memory: 512Mi  # Limit to 512 MiB memory
+          
+          # Environment variables for workload configuration
+          env:
+            - name: CPU_INTENSITY
+              value: "high"  # Controls prime calculation intensity
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          
+          # Health probes
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+
+      # Graceful shutdown
+      terminationGracePeriodSeconds: 30

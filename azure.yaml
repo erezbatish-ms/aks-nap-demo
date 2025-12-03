@@ -1,0 +1,35 @@
+# Azure Developer CLI (azd) configuration file
+# Run 'azd up' to deploy this demo
+
+name: aks-nap-demo
+metadata:
+  template: aks-nap-demo@1.0.0
+
+# Azure resources are defined in Bicep (infra/ folder)
+infra:
+  provider: bicep
+  path: ./infra
+  module: main
+
+# Note: Container images are built and pushed in postprovision hook
+# because azd's built-in packaging doesn't support Go
+
+# Lifecycle hooks
+hooks:
+  # After infrastructure is provisioned, apply K8s manifests
+  postprovision:
+    windows:
+      shell: pwsh
+      run: ./hooks/postprovision.ps1
+    posix:
+      shell: sh
+      run: ./hooks/postprovision.sh
+  
+  # Cleanup hook before 'azd down'
+  predown:
+    windows:
+      shell: pwsh
+      run: ./hooks/predown.ps1
+    posix:
+      shell: sh
+      run: ./hooks/predown.sh

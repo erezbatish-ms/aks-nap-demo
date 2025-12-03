@@ -1,0 +1,74 @@
+﻿# CI workflow for AKS NAP Demo
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-go:
+    name: Lint Go Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: Go Format Check
+        run: |
+          cd src/dashboard
+          if [ -n "`$(gofmt -l .)" ]; then
+            echo "Go files are not formatted:"
+            gofmt -l .
+            exit 1
+          fi
+      - name: Go Vet
+        run: cd src/dashboard && go vet ./...
+      - name: Go Build
+        run: cd src/dashboard && go build -v ./...
+
+  lint-python:
+    name: Lint Python Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install flake8
+      - name: Lint with flake8
+        run: |
+          cd src/workload
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  validate-bicep:
+    name: Validate Bicep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Bicep syntax
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+
+  docker-build-test:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Dashboard Image
+        run: docker build -t nap-demo-dashboard:test ./src/dashboard
+      - name: Build Workload Image
+        run: docker build -t nap-demo-workload:test ./src/workload
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'

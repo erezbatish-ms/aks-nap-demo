@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AKS Node Auto-Provisioning Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🚀 AKS Node Auto-Provisioning Demo</h1>
+                <p class="subtitle">Real-time visualization of Karpenter NAP behavior</p>
+            </div>
+            <div class="connection-status" id="connectionStatus">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- Control Panel -->
+        <section class="control-panel">
+            <div class="demo-controls">
+                <button id="startDemo" class="btn btn-primary">
+                    <span class="btn-icon">▶</span>
+                    Start Demo
+                </button>
+                <button id="stopDemo" class="btn btn-danger" disabled>
+                    <span class="btn-icon">■</span>
+                    Stop Demo
+                </button>
+            </div>
+            <div class="demo-status" id="demoStatus">
+                <span class="status-label">Status:</span>
+                <span class="status-value" id="demoPhase">Idle</span>
+                <span class="status-label">Replicas:</span>
+                <span class="status-value" id="targetReplicas">-</span>
+            </div>
+        </section>
+
+        <!-- Cluster Info Section -->
+        <section class="cluster-info-section" id="clusterInfoSection">
+            <div class="cluster-info-header">
+                <h2>☁️ AKS Cluster Configuration</h2>
+                <button class="toggle-btn" id="toggleClusterInfo">▼</button>
+            </div>
+            <div class="cluster-info-content" id="clusterInfoContent">
+                <div class="cluster-info-grid">
+                    <div class="info-card">
+                        <div class="info-icon">🏷️</div>
+                        <div class="info-content">
+                            <span class="info-label">Cluster Name</span>
+                            <span class="info-value" id="clusterName">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-icon">📍</div>
+                        <div class="info-content">
+                            <span class="info-label">Region</span>
+                            <span class="info-value" id="clusterRegion">-</span>
+                        </div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-icon">🔢</div>
+                        <div class="info-content">
+                            <span class="info-label">Kubernetes Version</span>
+                            <span class="info-value" id="k8sVersion">-</span>
+                        </div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-icon">🔌</div>
+                        <div class="info-content">
+                            <span class="info-label">CNI</span>
+                            <span class="info-value" id="clusterCNI">-</span>
+                        </div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-icon">🛡️</div>
+                        <div class="info-content">
+                            <span class="info-label">Network Policy</span>
+                            <span class="info-value" id="networkPolicy">-</span>
+                        </div>
+                    </div>
+                    <div class="info-card highlight">
+                        <div class="info-icon">⚡</div>
+                        <div class="info-content">
+                            <span class="info-label">NAP Enabled</span>
+                            <span class="info-value" id="napEnabled">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="nodepool-config">
+                    <h3>🎯 NodePool Configuration</h3>
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <span class="config-label">Pool Name</span>
+                            <span class="config-value" id="poolName">-</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">VM Families</span>
+                            <span class="config-value" id="skuFamilies">-</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Capacity Types</span>
+                            <span class="config-value" id="capacityTypes">-</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">CPU Sizes</span>
+                            <span class="config-value" id="cpuSizes">-</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Consolidation</span>
+                            <span class="config-value" id="consolidationPolicy">-</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Consolidate After</span>
+                            <span class="config-value" id="consolidateAfter">-</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">CPU Limit</span>
+                            <span class="config-value" id="cpuLimit">-</span>
+                        </div>
+                        <div class="config-item">
+                            <span class="config-label">Memory Limit</span>
+                            <span class="config-value" id="memoryLimit">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Metrics Cards -->
+        <section class="metrics-grid">
+            <div class="metric-card nodes">
+                <div class="metric-icon">🖥️</div>
+                <div class="metric-content">
+                    <h3>Total Nodes</h3>
+                    <div class="metric-value" id="totalNodes">0</div>
+                    <div class="metric-breakdown">
+                        <div class="metric-sub">
+                            <span class="sub-value" id="systemNodes">0</span>
+                            <span class="sub-label">System Pool</span>
+                        </div>
+                        <div class="metric-sub">
+                            <span class="sub-value" id="napNodes">0</span>
+                            <span class="sub-label">NAP Managed</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="metric-card pods">
+                <div class="metric-icon">📦</div>
+                <div class="metric-content">
+                    <h3>Active Pods</h3>
+                    <div class="metric-value" id="totalPods">0</div>
+                    <div class="metric-detail">
+                        Target: <span id="podTarget">1</span> | Max: 50
+                    </div>
+                </div>
+            </div>
+            <div class="metric-card spot">
+                <div class="metric-icon">💰</div>
+                <div class="metric-content">
+                    <h3>Spot Instances</h3>
+                    <div class="metric-value" id="spotNodes">0</div>
+                    <div class="metric-detail">cost-optimized nodes</div>
+                </div>
+            </div>
+            <div class="metric-card events">
+                <div class="metric-icon">📝</div>
+                <div class="metric-content">
+                    <h3>Recent Events</h3>
+                    <div class="metric-value" id="eventCount">0</div>
+                    <div class="metric-detail">cluster events</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts -->
+        <section class="charts-section">
+            <div class="chart-container">
+                <h3>Cluster Scaling Over Time</h3>
+                <div class="chart-wrapper">
+                    <canvas id="scalingChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-container">
+                <h3>Node Distribution</h3>
+                <div class="chart-wrapper">
+                    <canvas id="nodeDistChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Nodes View -->
+        <section class="nodes-section">
+            <h2>🖥️ Cluster Nodes</h2>
+            
+            <!-- System Nodes Section -->
+            <div class="node-pool-section">
+                <h3 class="pool-header system-pool">
+                    <span class="pool-icon">🔧</span>
+                    System Node Pool
+                    <span class="pool-count" id="systemPoolCount">0 nodes</span>
+                </h3>
+                <div class="nodes-grid" id="systemNodesGrid">
+                    <!-- System nodes will be populated dynamically -->
+                </div>
+            </div>
+            
+            <!-- NAP Nodes Section -->
+            <div class="node-pool-section">
+                <h3 class="pool-header nap-pool">
+                    <span class="pool-icon">⚡</span>
+                    NAP Auto-Provisioned Nodes
+                    <span class="pool-count" id="napPoolCount">0 nodes</span>
+                </h3>
+                <div class="nodes-grid" id="napNodesGrid">
+                    <!-- NAP nodes will be populated dynamically -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Events Timeline -->
+        <section class="events-section">
+            <h2>📋 NAP Events Timeline</h2>
+            <div class="events-timeline" id="eventsTimeline">
+                <!-- Events will be populated dynamically -->
+            </div>
+        </section>
+
+        <!-- Pods View -->
+        <section class="pods-section">
+            <h2>📦 Pod Placement</h2>
+            <div class="pods-table-container">
+                <table class="pods-table">
+                    <thead>
+                        <tr>
+                            <th>Pod Name</th>
+                            <th>Node</th>
+                            <th>Status</th>
+                            <th>CPU</th>
+                            <th>Memory</th>
+                            <th>Age</th>
+                        </tr>
+                    </thead>
+                    <tbody id="podsTable">
+                        <!-- Pods will be populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Azure Kubernetes Service - Node Auto-Provisioning Demo</p>
+            <p class="footer-detail">Last update: <span id="lastUpdate">-</span></p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

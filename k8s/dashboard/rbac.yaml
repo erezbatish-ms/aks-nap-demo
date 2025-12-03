@@ -1,0 +1,126 @@
+# RBAC Configuration for NAP Dashboard
+# Grants read-only access to cluster resources needed for visualization
+
+---
+# ServiceAccount for the dashboard pod
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nap-dashboard
+  namespace: nap-demo
+  labels:
+    app: dashboard
+    app.kubernetes.io/name: nap-dashboard
+    app.kubernetes.io/component: rbac
+
+---
+# ClusterRole with read permissions for cluster-wide resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nap-dashboard-reader
+  labels:
+    app: dashboard
+    app.kubernetes.io/name: nap-dashboard
+    app.kubernetes.io/component: rbac
+rules:
+  # Read nodes
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read pods across namespaces
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read events for NAP decision timeline
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read deployments for scaling info
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read HPA status
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read Karpenter NodeClaims (NAP provisioning decisions)
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodeclaims", "nodepools"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read AKS NodeClasses
+  - apiGroups: ["karpenter.azure.com"]
+    resources: ["aksnodeclasses"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read metrics (for node/pod resource usage)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+
+---
+# Role for namespace-scoped permissions (scaling control)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nap-dashboard-controller
+  namespace: nap-demo
+  labels:
+    app: dashboard
+    app.kubernetes.io/name: nap-dashboard
+    app.kubernetes.io/component: rbac
+rules:
+  # Allow scaling deployments (for demo start/stop)
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "update", "patch"]
+  
+  # Allow updating deployment replicas
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+
+---
+# ClusterRoleBinding for cluster-wide read access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nap-dashboard-reader-binding
+  labels:
+    app: dashboard
+    app.kubernetes.io/name: nap-dashboard
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nap-dashboard-reader
+subjects:
+  - kind: ServiceAccount
+    name: nap-dashboard
+    namespace: nap-demo
+
+---
+# RoleBinding for namespace-scoped control
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nap-dashboard-controller-binding
+  namespace: nap-demo
+  labels:
+    app: dashboard
+    app.kubernetes.io/name: nap-dashboard
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nap-dashboard-controller
+subjects:
+  - kind: ServiceAccount
+    name: nap-dashboard
+    namespace: nap-demo

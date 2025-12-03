@@ -1,0 +1,90 @@
+# NAP Dashboard Deployment
+# Real-time visualization of cluster state and NAP behavior
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nap-dashboard
+  namespace: nap-demo
+  labels:
+    app: dashboard
+    app.kubernetes.io/name: nap-dashboard
+    app.kubernetes.io/component: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+        app.kubernetes.io/name: nap-dashboard
+    spec:
+      # Use the dashboard service account with RBAC permissions
+      serviceAccountName: nap-dashboard
+      
+      # Schedule on system pool (not NAP-managed nodes)
+      tolerations:
+        - key: "CriticalAddonsOnly"
+          operator: "Exists"
+          effect: "NoSchedule"
+      
+      # Prefer system nodes for stability
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.azure.com/mode
+                    operator: In
+                    values:
+                      - system
+      
+      containers:
+        - name: dashboard
+          image: ${ACR_LOGIN_SERVER}/nap-demo/dashboard:latest
+          imagePullPolicy: Always
+          
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          
+          env:
+            # Namespace to watch
+            - name: WATCH_NAMESPACE
+              value: "nap-demo"
+            # Target workload deployment
+            - name: WORKLOAD_DEPLOYMENT
+              value: "cpu-stress"
+            # Logging level
+            - name: LOG_LEVEL
+              value: "info"
+          
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+            - containerPort: 8081
+              name: websocket
+              protocol: TCP
+          
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+      terminationGracePeriodSeconds: 10

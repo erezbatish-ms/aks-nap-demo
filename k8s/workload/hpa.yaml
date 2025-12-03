@@ -1,0 +1,62 @@
+# HorizontalPodAutoscaler for CPU Stress Workload
+# NOTE: This HPA is configured to NOT auto-scale.
+# Scaling is controlled by the dashboard Start/Stop Demo buttons.
+# The dashboard directly scales the deployment via Kubernetes API.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cpu-stress-hpa
+  namespace: nap-demo
+  labels:
+    app: cpu-stress
+    app.kubernetes.io/name: cpu-stress
+    app.kubernetes.io/component: hpa
+spec:
+  # Target deployment to scale
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cpu-stress
+  
+  # Fixed at 1 replica - dashboard controls scaling directly
+  minReplicas: 1
+  maxReplicas: 1
+  
+  # High threshold that will never trigger (scaling is manual)
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Set very high so HPA never triggers - dashboard controls scaling
+          averageUtilization: 500
+  
+  # Scaling behavior configuration
+  behavior:
+    # Scale-up behavior - aggressive for demo visibility
+    scaleUp:
+      # Short stabilization window for faster response
+      stabilizationWindowSeconds: 30
+      policies:
+        # Add up to 2 pods every 30 seconds
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+        # Or scale up by 100% of current replicas
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+      # Use the policy that adds the most pods
+      selectPolicy: Max
+    
+    # Scale-down behavior - slower to avoid thrashing
+    scaleDown:
+      # Wait 60 seconds before scaling down
+      stabilizationWindowSeconds: 60
+      policies:
+        # Remove 1 pod every 60 seconds
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min

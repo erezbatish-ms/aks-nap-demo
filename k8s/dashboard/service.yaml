@@ -1,0 +1,23 @@
+# Dashboard Service - Exposed via LoadBalancer for demo access
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard-service
+  namespace: nap-demo
+  labels:
+    app: dashboard
+    app.kubernetes.io/name: nap-dashboard
+    app.kubernetes.io/component: service
+spec:
+  type: LoadBalancer
+  selector:
+    app: dashboard
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+    - name: websocket
+      port: 8081
+      targetPort: 8081
+      protocol: TCP

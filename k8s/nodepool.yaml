@@ -1,0 +1,107 @@
+# Karpenter NodePool CRD for AKS NAP
+# Configures which nodes NAP can provision
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: nap-demo-pool
+  annotations:
+    kubernetes.io/description: "NAP Demo NodePool - D/E series with Spot priority"
+spec:
+  # Template for nodes created by this NodePool
+  template:
+    metadata:
+      labels:
+        # Required label for Cilium dataplane
+        kubernetes.azure.com/ebpf-dataplane: cilium
+        # Custom labels for identification
+        nodepool: nap-demo
+    spec:
+      # Reference to the AKSNodeClass for Azure-specific configuration
+      nodeClassRef:
+        group: karpenter.azure.com
+        kind: AKSNodeClass
+        name: default
+      
+      # Startup taints - required for Cilium to initialize
+      startupTaints:
+        - key: node.cilium.io/agent-not-ready
+          effect: NoExecute
+          value: "true"
+      
+      # Node selection requirements
+      requirements:
+        # Architecture - AMD64 only
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        
+        # Operating System - Linux only
+        - key: kubernetes.io/os
+          operator: In
+          values: ["linux"]
+        
+        # =====================================================================
+        # VM SKU FAMILIES - Limit to D and E series
+        # D-series: General purpose, balanced CPU-to-memory ratio
+        # E-series: Memory optimized, high memory-to-CPU ratio
+        # =====================================================================
+        - key: karpenter.azure.com/sku-family
+          operator: In
+          values: ["D", "E"]
+        
+        # =====================================================================
+        # CAPACITY TYPE - On-Demand for consolidation demo
+        # Using on-demand enables consolidation events (Spot-to-Spot 
+        # consolidation is disabled by default in AKS NAP).
+        # For cost optimization in production, use ["spot", "on-demand"]
+        # =====================================================================
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["on-demand"]
+        
+        # VM generation - prefer v4 and v5 series for better performance
+        - key: karpenter.azure.com/sku-version
+          operator: In
+          values: ["4", "5"]
+        
+        # CPU count range - reasonable sizes for demo
+        - key: karpenter.azure.com/sku-cpu
+          operator: In
+          values: ["2", "4", "8", "16"]
+      
+      # Node expiry - disabled for demo
+      expireAfter: Never
+  
+  # =====================================================================
+  # RESOURCE LIMITS - Cap total resources NAP can provision
+  # =====================================================================
+  limits:
+    cpu: 100       # Max 100 vCPUs across all NAP-managed nodes
+    memory: 200Gi  # Max 200 GiB memory
+  
+  # =====================================================================
+  # DISRUPTION POLICY - Fast consolidation for demo visibility
+  # =====================================================================
+  disruption:
+    # Consolidate when nodes are empty OR underutilized
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    # Immediate consolidation for demo purposes
+    consolidateAfter: 0s
+    
+  # NodePool priority weight (higher = preferred)
+  weight: 100
+
+---
+# AKSNodeClass defines Azure-specific node configuration
+apiVersion: karpenter.azure.com/v1alpha2
+kind: AKSNodeClass
+metadata:
+  name: default
+  annotations:
+    kubernetes.io/description: "Default AKS node class for NAP demo"
+spec:
+  # Image family for nodes
+  imageFamily: AzureLinux
+  
+  # OS disk configuration
+  osDiskSizeGB: 128
