@@ -24,6 +24,7 @@ Thumbs.db
 *.test
 *.out
 vendor/
+dashboard
 
 # Python
 __pycache__/

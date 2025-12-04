@@ -19,7 +19,7 @@ jobs:
       - name: Go Format Check
         run: |
           cd src/dashboard
-          if [ -n "`$(gofmt -l .)" ]; then
+          if [ -n "$(gofmt -l .)" ]; then
             echo "Go files are not formatted:"
             gofmt -l .
             exit 1
