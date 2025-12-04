@@ -44,30 +44,30 @@ var (
 // ClusterState holds the current state of the cluster
 type ClusterState struct {
 	sync.RWMutex
-	Nodes           []NodeInfo           `json:"nodes"`
-	Pods            []PodInfo            `json:"pods"`
-	Events          []EventInfo          `json:"events"`
-	NodeClaims      []NodeClaimInfo      `json:"nodeClaims"`
-	DemoStatus      DemoStatus           `json:"demoStatus"`
-	History         []HistoryPoint       `json:"history"`
-	LastUpdate      time.Time            `json:"lastUpdate"`
+	Nodes      []NodeInfo      `json:"nodes"`
+	Pods       []PodInfo       `json:"pods"`
+	Events     []EventInfo     `json:"events"`
+	NodeClaims []NodeClaimInfo `json:"nodeClaims"`
+	DemoStatus DemoStatus      `json:"demoStatus"`
+	History    []HistoryPoint  `json:"history"`
+	LastUpdate time.Time       `json:"lastUpdate"`
 }
 
 // NodeInfo represents a cluster node
 type NodeInfo struct {
-	Name              string            `json:"name"`
-	Status            string            `json:"status"`
-	CreatedAt         time.Time         `json:"createdAt"`
-	Labels            map[string]string `json:"labels"`
-	Capacity          ResourceInfo      `json:"capacity"`
-	Allocatable       ResourceInfo      `json:"allocatable"`
-	Usage             ResourceInfo      `json:"usage"`
-	UsagePercent      ResourcePercent   `json:"usagePercent"`
-	VMSize            string            `json:"vmSize"`
-	IsSpot            bool              `json:"isSpot"`
-	IsNAPManaged      bool              `json:"isNapManaged"`
-	IsKarpenterManaged bool             `json:"isKarpenterManaged"`
-	PodCount          int               `json:"podCount"`
+	Name               string            `json:"name"`
+	Status             string            `json:"status"`
+	CreatedAt          time.Time         `json:"createdAt"`
+	Labels             map[string]string `json:"labels"`
+	Capacity           ResourceInfo      `json:"capacity"`
+	Allocatable        ResourceInfo      `json:"allocatable"`
+	Usage              ResourceInfo      `json:"usage"`
+	UsagePercent       ResourcePercent   `json:"usagePercent"`
+	VMSize             string            `json:"vmSize"`
+	IsSpot             bool              `json:"isSpot"`
+	IsNAPManaged       bool              `json:"isNapManaged"`
+	IsKarpenterManaged bool              `json:"isKarpenterManaged"`
+	PodCount           int               `json:"podCount"`
 }
 
 // ResourcePercent represents CPU/memory usage percentage
@@ -100,11 +100,11 @@ type EventInfo struct {
 
 // NodeClaimInfo represents a Karpenter NodeClaim
 type NodeClaimInfo struct {
-	Name       string    `json:"name"`
-	Status     string    `json:"status"`
-	NodeName   string    `json:"nodeName"`
-	VMSize     string    `json:"vmSize"`
-	CreatedAt  time.Time `json:"createdAt"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	NodeName  string    `json:"nodeName"`
+	VMSize    string    `json:"vmSize"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // ResourceInfo represents CPU/memory resources
@@ -158,10 +158,10 @@ type NodePoolConfig struct {
 
 // Global state
 var (
-	state         = &ClusterState{}
-	clients       = make(map[*websocket.Conn]bool)
-	clientsMutex  sync.RWMutex
-	upgrader      = websocket.Upgrader{
+	state        = &ClusterState{}
+	clients      = make(map[*websocket.Conn]bool)
+	clientsMutex sync.RWMutex
+	upgrader     = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 	k8sClient     *kubernetes.Clientset
@@ -196,22 +196,22 @@ func main() {
 
 	// Setup HTTP routes
 	router := mux.NewRouter()
-	
+
 	// Static files
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	router.HandleFunc("/", serveIndex)
-	
+
 	// API endpoints
 	router.HandleFunc("/api/state", handleGetState).Methods("GET")
 	router.HandleFunc("/api/cluster", handleGetClusterInfo).Methods("GET")
 	router.HandleFunc("/api/demo/start", handleStartDemo).Methods("POST")
 	router.HandleFunc("/api/demo/stop", handleStopDemo).Methods("POST")
 	router.HandleFunc("/api/demo/status", handleDemoStatus).Methods("GET")
-	
+
 	// Health endpoints
 	router.HandleFunc("/health", handleHealth).Methods("GET")
 	router.HandleFunc("/ready", handleReady).Methods("GET")
-	
+
 	// WebSocket
 	router.HandleFunc("/ws", handleWebSocket)
 
@@ -230,7 +230,7 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 	<-sigChan
-	
+
 	log.Println("Shutting down...")
 	cancel()
 }
@@ -269,10 +269,10 @@ func syncDemoState() {
 		log.Printf("Warning: Could not get deployment state: %v", err)
 		return
 	}
-	
+
 	currentReplicas := int(*deployment.Spec.Replicas)
 	log.Printf("Current deployment replicas: %d", currentReplicas)
-	
+
 	state.Lock()
 	if currentReplicas > 1 {
 		// Demo appears to be running or was interrupted
@@ -305,7 +305,7 @@ var nodeMetricsGVR = schema.GroupVersionResource{
 // getNodeMetrics fetches node metrics from metrics-server
 func getNodeMetrics(ctx context.Context) map[string]ResourceInfo {
 	metrics := make(map[string]ResourceInfo)
-	
+
 	list, err := dynamicClient.Resource(nodeMetricsGVR).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		// Metrics server might not be available, log at debug level
@@ -314,7 +314,7 @@ func getNodeMetrics(ctx context.Context) map[string]ResourceInfo {
 		}
 		return metrics
 	}
-	
+
 	for _, item := range list.Items {
 		name := item.GetName()
 		usage, found, _ := unstructured.NestedMap(item.Object, "usage")
@@ -327,7 +327,7 @@ func getNodeMetrics(ctx context.Context) map[string]ResourceInfo {
 			}
 		}
 	}
-	
+
 	return metrics
 }
 
@@ -394,7 +394,7 @@ func watchNodes(ctx context.Context) {
 		}
 
 		var nodeInfos []NodeInfo
-		
+
 		// Get current pod counts to preserve them
 		state.RLock()
 		currentPodCounts := make(map[string]int)
@@ -402,7 +402,7 @@ func watchNodes(ctx context.Context) {
 			currentPodCounts[node.Name] = node.PodCount
 		}
 		state.RUnlock()
-		
+
 		for _, node := range nodes.Items {
 			info := NodeInfo{
 				Name:      node.Name,
@@ -418,17 +418,17 @@ func watchNodes(ctx context.Context) {
 					Memory: node.Status.Allocatable.Memory().String(),
 				},
 			}
-			
+
 			// Add usage metrics if available
 			if usage, ok := nodeMetrics[node.Name]; ok {
 				info.Usage = usage
-				
+
 				// Calculate usage percentages
 				allocCPU := parseCPU(node.Status.Allocatable.Cpu().String())
 				allocMem := parseMemory(node.Status.Allocatable.Memory().String())
 				usageCPU := parseCPU(usage.CPU)
 				usageMem := parseMemory(usage.Memory)
-				
+
 				if allocCPU > 0 {
 					info.UsagePercent.CPU = int(usageCPU * 100 / allocCPU)
 				}
@@ -599,18 +599,18 @@ func isRelevantEvent(event corev1.Event) bool {
 		"NodeReady", "NodeNotReady", "RegisteredNode",
 		"Provisioned", "Deprovisioned", "Consolidated",
 	}
-	
+
 	for _, reason := range relevantReasons {
 		if event.Reason == reason {
 			return true
 		}
 	}
-	
+
 	// Include Karpenter events
 	if event.Source.Component == "karpenter" {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -683,7 +683,7 @@ func recordHistory(ctx context.Context) {
 			point := HistoryPoint{
 				Timestamp: time.Now(),
 				NodeCount: len(state.Nodes),
-				PodCount:  napPodCount,  // Only pods on NAP nodes
+				PodCount:  napPodCount, // Only pods on NAP nodes
 			}
 			for _, node := range state.Nodes {
 				if node.IsNAPManaged {
@@ -984,7 +984,7 @@ func runDemoSimulation(ctx context.Context) {
 	// Scale-up phases: 1 -> 10 -> 20 -> 30 -> 40 -> 50
 	// This creates enough pods to trigger NAP to provision multiple nodes
 	scaleUpSteps := []int{10, 20, 30, 40, 50}
-	
+
 	// Scale up
 	for _, replicas := range scaleUpSteps {
 		select {
@@ -1005,7 +1005,7 @@ func runDemoSimulation(ctx context.Context) {
 		if !waitForPodsReady(ctx, replicas, 5*time.Minute) {
 			log.Printf("Timeout waiting for %d pods to be ready, continuing...", replicas)
 		}
-		
+
 		// Additional wait to observe NAP behavior
 		select {
 		case <-ctx.Done():
@@ -1047,7 +1047,7 @@ func runDemoSimulation(ctx context.Context) {
 		if !waitForPodsReady(ctx, replicas, 2*time.Minute) {
 			log.Printf("Timeout waiting for scale down to %d pods, continuing...", replicas)
 		}
-		
+
 		// Wait for NAP to consolidate nodes
 		select {
 		case <-ctx.Done():
@@ -1065,10 +1065,9 @@ func runDemoSimulation(ctx context.Context) {
 	log.Println("Demo simulation completed")
 }
 
-
 func scaleDeployment(replicas int) {
 	ctx := context.Background()
-	
+
 	scale, err := k8sClient.AppsV1().Deployments(watchNamespace).GetScale(ctx, workloadDeployment, metav1.GetOptions{})
 	if err != nil {
 		log.Printf("Error getting deployment scale: %v", err)
@@ -1094,14 +1093,14 @@ func scaleDeployment(replicas int) {
 func waitForPodsReady(ctx context.Context, expectedReplicas int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	checkInterval := 5 * time.Second
-	
+
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
 			return false
 		default:
 		}
-		
+
 		// Get deployment status
 		deployment, err := k8sClient.AppsV1().Deployments(watchNamespace).Get(ctx, workloadDeployment, metav1.GetOptions{})
 		if err != nil {
@@ -1109,24 +1108,24 @@ func waitForPodsReady(ctx context.Context, expectedReplicas int, timeout time.Du
 			time.Sleep(checkInterval)
 			continue
 		}
-		
+
 		readyReplicas := int(deployment.Status.ReadyReplicas)
 		availableReplicas := int(deployment.Status.AvailableReplicas)
-		
-		log.Printf("Waiting for pods: ready=%d, available=%d, target=%d", 
+
+		log.Printf("Waiting for pods: ready=%d, available=%d, target=%d",
 			readyReplicas, availableReplicas, expectedReplicas)
-		
+
 		// Update state with current replica count
 		state.Lock()
 		state.DemoStatus.CurrentReplicas = readyReplicas
 		state.Unlock()
-		
+
 		// Check if we've reached the target
 		if readyReplicas >= expectedReplicas {
 			log.Printf("Target reached: %d pods ready", readyReplicas)
 			return true
 		}
-		
+
 		// Wait before next check
 		select {
 		case <-ctx.Done():
@@ -1134,6 +1133,6 @@ func waitForPodsReady(ctx context.Context, expectedReplicas int, timeout time.Du
 		case <-time.After(checkInterval):
 		}
 	}
-	
+
 	return false
 }

@@ -65,7 +65,6 @@ def find_primes(limit: int) -> List[int]:
 
 def cpu_stress_loop():
     """Main CPU stress loop - runs continuously."""
-    global is_running, stats
     
     limit = INTENSITY_MAP.get(CPU_INTENSITY, INTENSITY_MAP['high'])
     logger.info(f"Starting CPU stress with intensity: {CPU_INTENSITY} (limit: {limit})")
