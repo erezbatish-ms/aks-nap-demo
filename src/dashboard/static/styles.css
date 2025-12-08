@@ -916,6 +916,437 @@ body {
     margin-top: 8px;
 }
 
+/* History Section */
+.history-section {
+    background: var(--card-background);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+}
+
+.history-section h2 {
+    margin-bottom: 8px;
+    font-size: 1.2rem;
+}
+
+.history-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+}
+
+/* History Summary Cards */
+.history-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.summary-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: var(--background);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.summary-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+
+.summary-card.provisioned {
+    background: linear-gradient(135deg, rgba(16, 124, 16, 0.08), rgba(16, 124, 16, 0.02));
+    border-color: var(--success-color);
+}
+
+.summary-card.consolidated {
+    background: linear-gradient(135deg, rgba(0, 120, 212, 0.08), rgba(0, 120, 212, 0.02));
+    border-color: var(--primary-color);
+}
+
+.summary-icon {
+    font-size: 1.5rem;
+}
+
+.summary-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.summary-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.summary-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* Timeline Container */
+.timeline-container {
+    background: var(--background);
+    border-radius: 10px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+}
+
+.timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.timeline-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+.timeline-legend {
+    display: flex;
+    gap: 16px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+.legend-dot.active {
+    background: linear-gradient(135deg, #107c10, #7fba00);
+}
+
+.legend-dot.consolidated {
+    background: linear-gradient(135deg, #0078d4, #50e6ff);
+}
+
+.timeline-wrapper {
+    position: relative;
+    min-height: 100px;
+    padding-bottom: 50px; /* Space for axis */
+}
+
+.timeline-content {
+    position: relative;
+    min-height: 80px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.timeline-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 80px;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Gantt Chart Layout */
+.gantt-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 0;
+}
+
+.gantt-row {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    gap: 10px;
+}
+
+.gantt-label {
+    flex: 0 0 200px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    background: var(--card-bg);
+    border-radius: 6px;
+    height: 100%;
+    border: 1px solid var(--border-color);
+}
+
+.gantt-status-icon {
+    font-size: 0.75rem;
+}
+
+.gantt-node-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90px;
+}
+
+.gantt-vm-size {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.gantt-bar-container {
+    flex: 1;
+    position: relative;
+    height: 100%;
+    background: var(--background);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.gantt-bar {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 10px;
+    min-width: 60px;
+}
+
+.gantt-bar.active {
+    background: linear-gradient(135deg, #107c10, #7fba00);
+    box-shadow: 0 2px 4px rgba(16, 124, 16, 0.3);
+}
+
+.gantt-bar.consolidated {
+    background: linear-gradient(135deg, #0078d4, #50e6ff);
+    box-shadow: 0 2px 4px rgba(0, 120, 212, 0.3);
+}
+
+.gantt-bar:hover {
+    transform: scaleY(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+}
+
+.gantt-bar-duration {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    white-space: nowrap;
+}
+
+/* Gantt Tooltip - follows cursor */
+.gantt-tooltip {
+    position: fixed;
+    display: none;
+    background: #1a1a1a;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    z-index: 1000;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+}
+
+/* Gantt Axis */
+.gantt-axis {
+    position: relative;
+    height: 30px;
+    margin-left: 210px; /* Align with bar container */
+    border-top: 1px solid var(--border-color);
+}
+
+.gantt-axis .axis-tick {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transform: translateX(-50%);
+}
+
+.gantt-axis .tick-mark {
+    width: 1px;
+    height: 8px;
+    background: var(--border-color);
+}
+
+.gantt-axis .tick-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+/* Keep old styles for backward compatibility but mark deprecated */
+.timeline-row {
+    position: relative;
+    height: 36px;
+    margin-bottom: 8px;
+}
+
+.timeline-bar {
+    position: absolute;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+    min-width: 80px;
+}
+
+.timeline-bar.active {
+    background: linear-gradient(135deg, #107c10, #7fba00);
+    box-shadow: 0 2px 4px rgba(16, 124, 16, 0.3);
+}
+
+.timeline-bar.consolidated {
+    background: linear-gradient(135deg, #0078d4, #50e6ff);
+    box-shadow: 0 2px 4px rgba(0, 120, 212, 0.3);
+}
+
+.timeline-bar:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 10;
+}
+
+.bar-content {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    padding: 4px 10px;
+    color: white;
+    overflow: hidden;
+}
+
+.bar-name {
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bar-vm {
+    font-size: 0.65rem;
+    opacity: 0.9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Timeline Bar Tooltip */
+.bar-tooltip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1a1a;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.bar-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1a1a1a;
+}
+
+.timeline-bar:hover .bar-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+.tooltip-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.tooltip-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.tooltip-row span:first-child {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.tooltip-row:last-child {
+    margin-bottom: 0;
+}
+
+/* Timeline Axis */
+.timeline-axis {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 30px;
+    border-top: 1px solid var(--border-color);
+}
+
+.axis-tick {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.tick-mark {
+    width: 1px;
+    height: 8px;
+    background: var(--border-color);
+}
+
+.tick-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
     width: 8px;

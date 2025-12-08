@@ -155,8 +155,11 @@ function startHeartbeatMonitor() {
         const timeSinceLastMessage = Date.now() - lastMessageTime;
         if (ws && ws.readyState === WebSocket.OPEN && timeSinceLastMessage > HEARTBEAT_TIMEOUT_MS) {
             console.warn('Connection stale (no messages for 10s), reconnecting...');
-            ws.close();
-            connectWebSocket();
+            // Properly close the old connection before reconnecting
+            const oldWs = ws;
+            ws = null;
+            oldWs.close();
+            // Reconnect will be triggered by onclose handler
         }
     }, 5000);
 }
@@ -369,6 +372,7 @@ function updateDashboard(state) {
     updatePods(state.pods || []);
     updateEvents(state.events || []);
     updateDemoStatus(state.demoStatus);
+    updateDemoHistory(state.demoHistory);
     
     // Update last update time
     document.getElementById('lastUpdate').textContent = 
@@ -680,6 +684,17 @@ function formatTime(timestamp) {
 
 function formatPhase(phase) {
     if (!phase) return 'Idle';
+    // Special formatting for key phases
+    const phaseMap = {
+        'observing': '👁️ Observing (Click Stop to End)',
+        'scaling-up': '⬆️ Scaling Up',
+        'scaling-down': '⬇️ Scaling Down',
+        'completed': '✅ Completed',
+        'stopped': '⏹️ Stopped',
+        'idle': '⏸️ Idle',
+        'recovered': '🔄 Recovered'
+    };
+    if (phaseMap[phase]) return phaseMap[phase];
     return phase.split('-').map(word => 
         word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
@@ -701,4 +716,246 @@ function getEventIcon(reason) {
         'Consolidated': '📦'
     };
     return icons[reason] || '📌';
+}
+
+// Minimum bar width in pixels for visibility
+const MIN_BAR_WIDTH = 100;
+
+// Update demo history section
+function updateDemoHistory(history) {
+    if (!history) {
+        // Clear history display when no history
+        document.getElementById('peakNodes').textContent = '0';
+        document.getElementById('peakPods').textContent = '0';
+        document.getElementById('totalProvisioned').textContent = '0';
+        document.getElementById('totalConsolidated').textContent = '0';
+        document.getElementById('demoDuration').textContent = '0:00';
+        document.getElementById('nodeTimeline').innerHTML = 
+            '<div class="timeline-empty">Start a demo to see node lifecycle history</div>';
+        document.getElementById('timelineAxis').innerHTML = '';
+        return;
+    }
+
+    // Update summary cards
+    document.getElementById('peakNodes').textContent = history.peakNodes || 0;
+    document.getElementById('peakPods').textContent = history.peakPods || 0;
+    document.getElementById('totalProvisioned').textContent = history.totalProvisioned || 0;
+    document.getElementById('totalConsolidated').textContent = history.totalConsolidated || 0;
+
+    // Calculate demo duration
+    if (history.startedAt) {
+        const startTime = new Date(history.startedAt);
+        const now = new Date();
+        const durationSec = Math.floor((now - startTime) / 1000);
+        const minutes = Math.floor(durationSec / 60);
+        const seconds = durationSec % 60;
+        document.getElementById('demoDuration').textContent = 
+            `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    // Render timeline
+    renderNodeTimeline(history.nodeEvents || [], history.startedAt);
+}
+
+// Render the node lifecycle timeline as a Gantt chart
+function renderNodeTimeline(nodeEvents, demoStartTime) {
+    const timelineEl = document.getElementById('nodeTimeline');
+    const axisEl = document.getElementById('timelineAxis');
+    
+    if (!nodeEvents || nodeEvents.length === 0) {
+        timelineEl.innerHTML = '<div class="timeline-empty">No node events yet. Waiting for NAP to provision nodes...</div>';
+        axisEl.innerHTML = '';
+        return;
+    }
+
+    const startTime = new Date(demoStartTime);
+    const now = new Date();
+    
+    // Calculate total duration - find the latest end time or use current time
+    let maxEndTime = now;
+    nodeEvents.forEach(event => {
+        if (event.endTime) {
+            const endTime = new Date(event.endTime);
+            if (endTime > maxEndTime) maxEndTime = endTime;
+        }
+    });
+    
+    // Total duration with minimum of 60 seconds
+    const totalDurationMs = Math.max(maxEndTime - startTime, 60000);
+    
+    // Sort events by start time
+    const sortedEvents = [...nodeEvents].sort((a, b) => 
+        new Date(a.startTime) - new Date(b.startTime)
+    );
+
+    // Build timeline HTML with label column and bar column
+    let html = '<div class="gantt-chart">';
+    
+    sortedEvents.forEach((event, index) => {
+        const eventStart = new Date(event.startTime);
+        
+        // Handle Go's zero time value for active nodes (endTime not set)
+        // Go's zero time is "0001-01-01T00:00:00Z"
+        const isZeroTime = !event.endTime || event.endTime.startsWith('0001-01-01');
+        const eventEnd = isZeroTime ? now : new Date(event.endTime);
+        
+        // Calculate positions as percentages
+        const startOffset = Math.max(0, eventStart - startTime);
+        const duration = Math.max(0, eventEnd - eventStart); // Ensure non-negative
+        
+        const leftPercent = (startOffset / totalDurationMs) * 100;
+        const widthPercent = (duration / totalDurationMs) * 100;
+        
+        // Ensure bar stays within bounds and has minimum width
+        const clampedLeft = Math.min(leftPercent, 95);
+        // Minimum width of 5% or calculated width, capped at remaining space
+        const minWidthPercent = 5;
+        const calculatedWidth = Math.max(widthPercent, minWidthPercent);
+        const clampedWidth = Math.min(calculatedWidth, 100 - clampedLeft);
+
+        const isActive = event.eventType === 'active';
+        const statusClass = isActive ? 'active' : 'consolidated';
+        const statusIcon = isActive ? '🟢' : '🔵';
+        const statusText = isActive ? 'Active' : 'Consolidated';
+        
+        // Extract short node name
+        const nameParts = event.nodeName.split('-');
+        const shortName = nameParts.length > 2 
+            ? nameParts.slice(-2).join('-') 
+            : event.nodeName.substring(0, 15);
+        
+        // Format duration
+        const durationSec = duration / 1000;
+        const durationDisplay = formatDuration(durationSec);
+        
+        html += `
+            <div class="gantt-row">
+                <div class="gantt-label">
+                    <span class="gantt-status-icon">${statusIcon}</span>
+                    <span class="gantt-node-name" title="${event.nodeName}">${shortName}</span>
+                    <span class="gantt-vm-size">${event.vmSize || ''}</span>
+                </div>
+                <div class="gantt-bar-container">
+                    <div class="gantt-bar ${statusClass}" 
+                         style="left: ${clampedLeft}%; width: ${clampedWidth}%;"
+                         data-node="${event.nodeName}"
+                         data-vm="${event.vmSize || 'Unknown'}"
+                         data-status="${statusText}"
+                         data-duration="${durationDisplay}"
+                         data-reason="${event.reason || ''}">
+                        <span class="gantt-bar-duration">${durationDisplay}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    timelineEl.innerHTML = html;
+    
+    // Add tooltip functionality
+    setupTimelineTooltips();
+    
+    // Render time axis
+    renderTimeAxis(axisEl, totalDurationMs / 1000);
+}
+
+// Setup tooltip hover behavior for timeline bars
+function setupTimelineTooltips() {
+    const bars = document.querySelectorAll('.gantt-bar');
+    
+    // Remove existing tooltip if any
+    const existingTooltip = document.getElementById('gantt-tooltip');
+    if (existingTooltip) existingTooltip.remove();
+    
+    // Create tooltip element
+    const tooltip = document.createElement('div');
+    tooltip.id = 'gantt-tooltip';
+    tooltip.className = 'gantt-tooltip';
+    document.body.appendChild(tooltip);
+    
+    bars.forEach(bar => {
+        bar.addEventListener('mouseenter', (e) => {
+            const node = bar.dataset.node;
+            const vm = bar.dataset.vm;
+            const status = bar.dataset.status;
+            const duration = bar.dataset.duration;
+            const reason = bar.dataset.reason;
+            
+            tooltip.innerHTML = `
+                <div class="tooltip-title">${node}</div>
+                <div class="tooltip-row"><span>VM Size:</span> ${vm}</div>
+                <div class="tooltip-row"><span>Status:</span> ${status}</div>
+                <div class="tooltip-row"><span>Duration:</span> ${duration}</div>
+                ${reason ? `<div class="tooltip-row"><span>Reason:</span> ${reason}</div>` : ''}
+            `;
+            tooltip.style.display = 'block';
+        });
+        
+        bar.addEventListener('mousemove', (e) => {
+            tooltip.style.left = (e.pageX + 15) + 'px';
+            tooltip.style.top = (e.pageY - 10) + 'px';
+        });
+        
+        bar.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
+        });
+    });
+}
+
+// Render the time axis with labels
+function renderTimeAxis(axisEl, totalDurationSec) {
+    // Determine appropriate interval based on total duration
+    let intervalSec;
+    if (totalDurationSec <= 120) {
+        intervalSec = 15; // 15 second intervals for short demos
+    } else if (totalDurationSec <= 300) {
+        intervalSec = 30; // 30 second intervals
+    } else if (totalDurationSec <= 600) {
+        intervalSec = 60; // 1 minute intervals
+    } else {
+        intervalSec = 120; // 2 minute intervals for long demos
+    }
+    
+    let html = '<div class="gantt-axis">';
+    
+    for (let sec = 0; sec <= totalDurationSec; sec += intervalSec) {
+        const leftPercent = (sec / totalDurationSec) * 100;
+        const label = formatAxisLabel(sec);
+        
+        html += `
+            <div class="axis-tick" style="left: ${leftPercent}%;">
+                <div class="tick-mark"></div>
+                <div class="tick-label">${label}</div>
+            </div>
+        `;
+    }
+    
+    html += '</div>';
+    axisEl.innerHTML = html;
+}
+
+// Format duration for display
+function formatDuration(seconds) {
+    if (seconds < 60) {
+        return `${Math.round(seconds)}s`;
+    } else if (seconds < 3600) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.round(seconds % 60);
+        return `${mins}m ${secs}s`;
+    } else {
+        const hours = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        return `${hours}h ${mins}m`;
+    }
+}
+
+// Format axis label
+function formatAxisLabel(seconds) {
+    if (seconds === 0) return '0s';
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (secs === 0) return `${mins}m`;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
 }

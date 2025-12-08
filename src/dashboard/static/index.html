@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AKS Node Auto-Provisioning Demo</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css?v=1.11">
 </head>
 <body>
     <div class="container">
@@ -233,6 +233,68 @@
             </div>
         </section>
 
+        <!-- Node Lifecycle History -->
+        <section class="history-section" id="historySection">
+            <h2>📈 Node Lifecycle History</h2>
+            <p class="history-subtitle">Track NAP node provisioning and consolidation during the demo run</p>
+            
+            <!-- Summary Cards -->
+            <div class="history-summary">
+                <div class="summary-card">
+                    <div class="summary-icon">🏔️</div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="peakNodes">0</span>
+                        <span class="summary-label">Peak Nodes</span>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon">📦</div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="peakPods">0</span>
+                        <span class="summary-label">Peak Pods</span>
+                    </div>
+                </div>
+                <div class="summary-card provisioned">
+                    <div class="summary-icon">🚀</div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="totalProvisioned">0</span>
+                        <span class="summary-label">Total Provisioned</span>
+                    </div>
+                </div>
+                <div class="summary-card consolidated">
+                    <div class="summary-icon">📦</div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="totalConsolidated">0</span>
+                        <span class="summary-label">Total Consolidated</span>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon">⏱️</div>
+                    <div class="summary-content">
+                        <span class="summary-value" id="demoDuration">0:00</span>
+                        <span class="summary-label">Demo Duration</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timeline Container -->
+            <div class="timeline-container">
+                <div class="timeline-header">
+                    <span class="timeline-title">Node Timeline</span>
+                    <span class="timeline-legend">
+                        <span class="legend-item"><span class="legend-dot active"></span> Active</span>
+                        <span class="legend-item"><span class="legend-dot consolidated"></span> Consolidated</span>
+                    </span>
+                </div>
+                <div class="timeline-wrapper" id="timelineWrapper">
+                    <div class="timeline-content" id="nodeTimeline">
+                        <div class="timeline-empty">Start a demo to see node lifecycle history</div>
+                    </div>
+                    <div class="timeline-axis" id="timelineAxis"></div>
+                </div>
+            </div>
+        </section>
+
         <!-- Pods View -->
         <section class="pods-section">
             <h2>📦 Pod Placement</h2>
@@ -262,6 +324,6 @@
         </footer>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=1.11"></script>
 </body>
 </html>

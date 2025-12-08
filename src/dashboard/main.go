@@ -44,13 +44,14 @@ var (
 // ClusterState holds the current state of the cluster
 type ClusterState struct {
 	sync.RWMutex
-	Nodes      []NodeInfo      `json:"nodes"`
-	Pods       []PodInfo       `json:"pods"`
-	Events     []EventInfo     `json:"events"`
-	NodeClaims []NodeClaimInfo `json:"nodeClaims"`
-	DemoStatus DemoStatus      `json:"demoStatus"`
-	History    []HistoryPoint  `json:"history"`
-	LastUpdate time.Time       `json:"lastUpdate"`
+	Nodes       []NodeInfo      `json:"nodes"`
+	Pods        []PodInfo       `json:"pods"`
+	Events      []EventInfo     `json:"events"`
+	NodeClaims  []NodeClaimInfo `json:"nodeClaims"`
+	DemoStatus  DemoStatus      `json:"demoStatus"`
+	History     []HistoryPoint  `json:"history"`
+	DemoHistory *DemoHistory    `json:"demoHistory"`
+	LastUpdate  time.Time       `json:"lastUpdate"`
 }
 
 // NodeInfo represents a cluster node
@@ -130,6 +131,27 @@ type HistoryPoint struct {
 	NAPNodes  int       `json:"napNodes"`
 }
 
+// NodeLifecycleEvent tracks provisioning and consolidation of individual nodes
+type NodeLifecycleEvent struct {
+	NodeName    string     `json:"nodeName"`
+	EventType   string     `json:"eventType"` // "provisioned", "consolidated", "active"
+	VMSize      string     `json:"vmSize"`
+	StartTime   time.Time  `json:"startTime"`
+	EndTime     *time.Time `json:"endTime,omitempty"`
+	DurationSec int64      `json:"durationSec,omitempty"`
+	Reason      string     `json:"reason,omitempty"`
+}
+
+// DemoHistory tracks the history of node provisioning/consolidation during a demo run
+type DemoHistory struct {
+	StartedAt         time.Time            `json:"startedAt"`
+	PeakNodes         int                  `json:"peakNodes"`
+	PeakPods          int                  `json:"peakPods"`
+	TotalProvisioned  int                  `json:"totalProvisioned"`
+	TotalConsolidated int                  `json:"totalConsolidated"`
+	NodeEvents        []NodeLifecycleEvent `json:"nodeEvents"`
+}
+
 // ClusterInfo holds AKS cluster configuration details
 type ClusterInfo struct {
 	ClusterName       string         `json:"clusterName"`
@@ -167,6 +189,12 @@ var (
 	k8sClient     *kubernetes.Clientset
 	dynamicClient dynamic.Interface
 	demoCancel    context.CancelFunc
+
+	// Node lifecycle tracking
+	demoHistory      = &DemoHistory{}
+	demoHistoryMutex sync.RWMutex
+	previousNodes    = make(map[string]NodeInfo) // Track nodes from previous poll cycle
+	previousNodesMux sync.RWMutex
 )
 
 func main() {
@@ -207,6 +235,7 @@ func main() {
 	router.HandleFunc("/api/demo/start", handleStartDemo).Methods("POST")
 	router.HandleFunc("/api/demo/stop", handleStopDemo).Methods("POST")
 	router.HandleFunc("/api/demo/status", handleDemoStatus).Methods("GET")
+	router.HandleFunc("/api/demo/history", handleGetDemoHistory).Methods("GET")
 
 	// Health endpoints
 	router.HandleFunc("/health", handleHealth).Methods("GET")
@@ -263,6 +292,7 @@ func initK8sClient() error {
 }
 
 // syncDemoState checks the current deployment state and syncs the demo status
+// This is called on startup to recover state if dashboard restarts mid-demo
 func syncDemoState() {
 	deployment, err := k8sClient.AppsV1().Deployments(watchNamespace).Get(context.Background(), workloadDeployment, metav1.GetOptions{})
 	if err != nil {
@@ -274,8 +304,10 @@ func syncDemoState() {
 	log.Printf("Current deployment replicas: %d", currentReplicas)
 
 	state.Lock()
+	// Only set running state on startup if replicas > 1 (indicating interrupted demo)
+	// Once set, IsRunning is only changed by user clicking Stop Demo
 	if currentReplicas > 1 {
-		// Demo appears to be running or was interrupted
+		// Demo appears to have been interrupted mid-run
 		state.DemoStatus = DemoStatus{
 			IsRunning:       true,
 			Phase:           "recovered",
@@ -283,7 +315,7 @@ func syncDemoState() {
 			TargetReplicas:  currentReplicas,
 			CurrentReplicas: currentReplicas,
 		}
-		log.Printf("Detected running demo state with %d replicas", currentReplicas)
+		log.Printf("Detected interrupted demo with %d replicas - resuming observation mode", currentReplicas)
 	} else {
 		state.DemoStatus = DemoStatus{
 			IsRunning:       false,
@@ -472,13 +504,138 @@ func watchNodes(ctx context.Context) {
 			nodeInfos = append(nodeInfos, info)
 		}
 
+		// Track node lifecycle events (only for NAP-managed nodes)
+		trackNodeLifecycle(nodeInfos)
+
+		// Copy demo history before acquiring state lock to avoid nested locks
+		demoHistoryMutex.RLock()
+		historyCopy := demoHistory
+		demoHistoryMutex.RUnlock()
+
 		state.Lock()
 		state.Nodes = nodeInfos
 		state.LastUpdate = time.Now()
+		// Include demo history in state for WebSocket broadcasts
+		state.DemoHistory = historyCopy
 		state.Unlock()
 
 		time.Sleep(1 * time.Second)
 	}
+}
+
+// trackNodeLifecycle detects new and removed NAP nodes and records lifecycle events
+func trackNodeLifecycle(currentNodes []NodeInfo) {
+	// Build map of current NAP nodes
+	currentNAPNodes := make(map[string]NodeInfo)
+	for _, node := range currentNodes {
+		if node.IsNAPManaged {
+			currentNAPNodes[node.Name] = node
+		}
+	}
+
+	// Check if demo is running first - read state without holding other locks
+	// to avoid lock ordering issues
+	state.RLock()
+	demoRunning := state.DemoStatus.IsRunning
+	pods := state.Pods // Copy pods slice reference while holding lock
+	state.RUnlock()
+
+	// Now acquire the lifecycle-specific locks
+	previousNodesMux.Lock()
+	defer previousNodesMux.Unlock()
+
+	if !demoRunning {
+		// Update previous nodes but don't track events
+		previousNodes = currentNAPNodes
+		return
+	}
+
+	demoHistoryMutex.Lock()
+	defer demoHistoryMutex.Unlock()
+
+	// Initialize demo history start time if not set
+	if demoHistory.StartedAt.IsZero() {
+		demoHistory.StartedAt = time.Now()
+	}
+
+	now := time.Now()
+
+	// Detect new nodes (provisioned)
+	for nodeName, nodeInfo := range currentNAPNodes {
+		if _, existed := previousNodes[nodeName]; !existed {
+			// New node detected - record provisioning event
+			event := NodeLifecycleEvent{
+				NodeName:  nodeName,
+				EventType: "active",
+				VMSize:    nodeInfo.VMSize,
+				StartTime: nodeInfo.CreatedAt,
+			}
+			demoHistory.NodeEvents = append(demoHistory.NodeEvents, event)
+			demoHistory.TotalProvisioned++
+			log.Printf("Node lifecycle: PROVISIONED %s (%s)", nodeName, nodeInfo.VMSize)
+		}
+	}
+
+	// Detect removed nodes (consolidated)
+	for nodeName, prevNodeInfo := range previousNodes {
+		if _, exists := currentNAPNodes[nodeName]; !exists {
+			// Node was removed - find the matching event and update it
+			for i := range demoHistory.NodeEvents {
+				if demoHistory.NodeEvents[i].NodeName == nodeName && demoHistory.NodeEvents[i].EventType == "active" {
+					demoHistory.NodeEvents[i].EventType = "consolidated"
+					endTime := now
+					demoHistory.NodeEvents[i].EndTime = &endTime
+					demoHistory.NodeEvents[i].DurationSec = int64(now.Sub(demoHistory.NodeEvents[i].StartTime).Seconds())
+					demoHistory.NodeEvents[i].Reason = "Consolidation"
+					demoHistory.TotalConsolidated++
+					log.Printf("Node lifecycle: CONSOLIDATED %s (duration: %ds)", nodeName, demoHistory.NodeEvents[i].DurationSec)
+					break
+				}
+			}
+			// If no matching event found (edge case), create a completed event
+			found := false
+			for _, e := range demoHistory.NodeEvents {
+				if e.NodeName == nodeName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				endTime := now
+				event := NodeLifecycleEvent{
+					NodeName:    nodeName,
+					EventType:   "consolidated",
+					VMSize:      prevNodeInfo.VMSize,
+					StartTime:   prevNodeInfo.CreatedAt,
+					EndTime:     &endTime,
+					DurationSec: int64(now.Sub(prevNodeInfo.CreatedAt).Seconds()),
+					Reason:      "Consolidation",
+				}
+				demoHistory.NodeEvents = append(demoHistory.NodeEvents, event)
+				demoHistory.TotalConsolidated++
+			}
+		}
+	}
+
+	// Update peak counts
+	napNodeCount := len(currentNAPNodes)
+	if napNodeCount > demoHistory.PeakNodes {
+		demoHistory.PeakNodes = napNodeCount
+	}
+
+	// Count pods on NAP nodes for peak tracking (using pods slice captured earlier)
+	napPodCount := 0
+	for _, pod := range pods {
+		if pod.IsOnNAPNode {
+			napPodCount++
+		}
+	}
+	if napPodCount > demoHistory.PeakPods {
+		demoHistory.PeakPods = napPodCount
+	}
+
+	// Update previous nodes for next cycle
+	previousNodes = currentNAPNodes
 }
 
 func watchPods(ctx context.Context) {
@@ -727,16 +884,36 @@ func broadcastState() {
 		return
 	}
 
+	// Copy client list to avoid holding lock during writes
 	clientsMutex.RLock()
+	clientList := make([]*websocket.Conn, 0, len(clients))
 	for client := range clients {
-		err := client.WriteMessage(websocket.TextMessage, data)
-		if err != nil {
-			log.Printf("WebSocket write error: %v", err)
-			client.Close()
-			delete(clients, client)
-		}
+		clientList = append(clientList, client)
 	}
 	clientsMutex.RUnlock()
+
+	// Write to clients without holding lock
+	var failedClients []*websocket.Conn
+	for _, client := range clientList {
+		// Set write deadline to prevent blocking forever
+		client.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		err := client.WriteMessage(websocket.TextMessage, data)
+		if err != nil {
+			failedClients = append(failedClients, client)
+		}
+	}
+
+	// Remove failed clients with write lock
+	if len(failedClients) > 0 {
+		clientsMutex.Lock()
+		for _, client := range failedClients {
+			if clients[client] {
+				delete(clients, client)
+				client.Close()
+			}
+		}
+		clientsMutex.Unlock()
+	}
 }
 
 // HTTP Handlers
@@ -884,6 +1061,19 @@ func handleStartDemo(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(context.Background())
 	demoCancel = cancel
 
+	// Initialize demo history for new run
+	demoHistoryMutex.Lock()
+	demoHistory = &DemoHistory{
+		StartedAt:  time.Now(),
+		NodeEvents: []NodeLifecycleEvent{},
+	}
+	demoHistoryMutex.Unlock()
+
+	// Clear previous nodes tracking
+	previousNodesMux.Lock()
+	previousNodes = make(map[string]NodeInfo)
+	previousNodesMux.Unlock()
+
 	state.Lock()
 	state.DemoStatus = DemoStatus{
 		IsRunning:      true,
@@ -918,8 +1108,34 @@ func handleStopDemo(w http.ResponseWriter, r *http.Request) {
 	}
 	state.Unlock()
 
+	// Reset demo history for next run
+	resetDemoHistory()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "stopped"})
+}
+
+// resetDemoHistory clears the demo history for a new run
+func resetDemoHistory() {
+	demoHistoryMutex.Lock()
+	defer demoHistoryMutex.Unlock()
+
+	log.Printf("Resetting demo history (had %d node events)", len(demoHistory.NodeEvents))
+	demoHistory = &DemoHistory{}
+
+	// Also clear previous nodes tracking
+	previousNodesMux.Lock()
+	previousNodes = make(map[string]NodeInfo)
+	previousNodesMux.Unlock()
+}
+
+// handleGetDemoHistory returns the current demo history
+func handleGetDemoHistory(w http.ResponseWriter, r *http.Request) {
+	demoHistoryMutex.RLock()
+	defer demoHistoryMutex.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(demoHistory)
 }
 
 func handleDemoStatus(w http.ResponseWriter, r *http.Request) {
@@ -954,16 +1170,25 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Configure connection timeouts
+	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+
 	clientsMutex.Lock()
 	clients[conn] = true
+	clientCount := len(clients)
 	clientsMutex.Unlock()
 
-	log.Printf("New WebSocket client connected. Total clients: %d", len(clients))
+	log.Printf("New WebSocket client connected. Total clients: %d", clientCount)
 
 	// Send initial state
 	state.RLock()
 	data, _ := json.Marshal(state)
 	state.RUnlock()
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	conn.WriteMessage(websocket.TextMessage, data)
 
 	// Keep connection alive and handle disconnection
@@ -971,12 +1196,17 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		_, _, err := conn.ReadMessage()
 		if err != nil {
 			clientsMutex.Lock()
-			delete(clients, conn)
+			if clients[conn] {
+				delete(clients, conn)
+			}
+			clientCount := len(clients)
 			clientsMutex.Unlock()
 			conn.Close()
-			log.Printf("WebSocket client disconnected. Total clients: %d", len(clients))
+			log.Printf("WebSocket client disconnected. Total clients: %d", clientCount)
 			return
 		}
+		// Reset read deadline on any message
+		conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	}
 }
 
@@ -1056,13 +1286,13 @@ func runDemoSimulation(ctx context.Context) {
 		}
 	}
 
-	// Demo complete
+	// Demo scaling complete - stay in running state for observation
+	// User must manually click Stop to end the demo and view final timeline
 	state.Lock()
-	state.DemoStatus.IsRunning = false
-	state.DemoStatus.Phase = "completed"
+	state.DemoStatus.Phase = "observing"
 	state.Unlock()
 
-	log.Println("Demo simulation completed")
+	log.Println("Demo scaling completed - in observation mode. Click Stop Demo to end.")
 }
 
 func scaleDeployment(replicas int) {
